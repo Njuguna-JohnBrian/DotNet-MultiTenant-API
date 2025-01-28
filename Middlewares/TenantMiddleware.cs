@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using MultitenancyApp.DatabaseContext;
+using MultitenancyApp.Interfaces;
 using Npgsql;
 
 namespace MultitenancyApp.Middlewares;
@@ -16,7 +17,8 @@ public class TenantMiddleware
     public async Task InvokeAsync(
         HttpContext httpContext,
         IdentityDbContext _identityContext,
-        ApplicationDbContext _applicationDbContext)
+        ApplicationDbContext _applicationDbContext,
+        IPasswordService _passwordService)
     {
         var apiPath = httpContext.Request.Path.Value?.ToLower();
 
@@ -48,9 +50,9 @@ public class TenantMiddleware
             Port = 5432,
             Database = tenantData.TenantName,
             Username = tenantData.TenantName,
-            Password = "test1234!",
+            Password = _passwordService.DecryptPassword(tenantData.PasswordHash),
         };
-        
+
         Console.WriteLine(tenantConnectionString.ConnectionString);
 
         _applicationDbContext.Database.SetConnectionString(tenantConnectionString.ConnectionString);

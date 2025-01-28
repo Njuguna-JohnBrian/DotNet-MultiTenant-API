@@ -12,7 +12,9 @@ public class PasswordService : IPasswordService
     /// <returns>The hashed password</returns>
     public string CreatePasswordHash(string rawPassword)
     {
-        return BC.HashPassword(rawPassword);
+        var encDataByte = System.Text.Encoding.UTF8.GetBytes(rawPassword);
+        string encodedData = Convert.ToBase64String(encDataByte);
+        return encodedData;
     }
 
     /// <summary>
@@ -23,6 +25,18 @@ public class PasswordService : IPasswordService
     /// <returns>true if password matched or false</returns>
     public bool PasswordIsValid(string rawPassword, string hashedPassword)
     {
-        return BC.Verify(rawPassword, hashedPassword);
+        return DecryptPassword(hashedPassword) == rawPassword;
+    }
+
+    public string DecryptPassword(string encryptedPassword)
+    {
+        var encoder = new System.Text.UTF8Encoding();
+        var utf8Decode = encoder.GetDecoder();
+        byte[] toDecodeByte = Convert.FromBase64String(encryptedPassword);
+        int charCount = utf8Decode.GetCharCount(toDecodeByte, 0, toDecodeByte.Length);
+        char[] decodedChar = new char[charCount];
+        utf8Decode.GetChars(toDecodeByte, 0, toDecodeByte.Length, decodedChar, 0);
+        string result = new String(decodedChar);
+        return result;
     }
 }
