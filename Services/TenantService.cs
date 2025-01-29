@@ -10,11 +10,11 @@ public class TenantService : ITenantService
 {
     public async Task CreateTenantDatabaseAsync(string tenantName, string dbPassword)
     {
-        // 1) Open a raw admin connection
+        // Open admin connection
         await using var adminConn = new NpgsqlConnection(ConfigurationHelper.GetConfigurationValueByKey("ConnectionStrings:MasterConnection"));
         await adminConn.OpenAsync();
 
-        // 2) Create the role if needed
+      
         var checkRoleCmd = new NpgsqlCommand(
             $"SELECT 1 FROM pg_roles WHERE rolname = '{tenantName}'", adminConn);
         
@@ -30,7 +30,7 @@ public class TenantService : ITenantService
             await createRoleCmd.ExecuteNonQueryAsync();
         }
 
-        // 3) Create the database if needed
+        //Check if tenant database exists, of not create
         var checkDbCmd = new NpgsqlCommand(
             $"SELECT 1 FROM pg_database WHERE datname = '{tenantName}';", adminConn);
 
@@ -41,20 +41,26 @@ public class TenantService : ITenantService
 
         if (!dbExists)
         {
-            // This must be outside any transaction
             var createDbCmd = new NpgsqlCommand(
                 $"CREATE DATABASE \"{tenantName}\" OWNER \"{tenantName}\";", adminConn);
             await createDbCmd.ExecuteNonQueryAsync();
         }
 
-        // 4) Grant privileges
+        //Grant tenant all privileges on created database
         var grantCmd = new NpgsqlCommand(
             $"GRANT ALL PRIVILEGES ON DATABASE \"{tenantName}\" TO \"{tenantName}\";", adminConn);
         await grantCmd.ExecuteNonQueryAsync();
 
-        // 5) Now connect to the *new* database to set up schema privileges.
-        var tenantConnectionString =
-            $"Host=localhost;Database={tenantName};Username={tenantName};Password={dbPassword};";
+        // Connect to tenant database and run migrations
+        var tenantConnectionString = new NpgsqlConnectionStringBuilder
+        {
+            Host = ConfigurationHelper.GetConfigurationValueByKey("DbOptions:Host"),
+            Port = int.Parse(ConfigurationHelper.GetConfigurationValueByKey("DbOptions:Port")!),
+            Database = tenantName,
+            Username = tenantName,
+            Password = dbPassword
+        }.ConnectionString;
+        
         await using var tenantConn = new NpgsqlConnection(tenantConnectionString);
         await tenantConn.OpenAsync();
 
@@ -67,8 +73,7 @@ public class TenantService : ITenantService
        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO ""{tenantName}"";
     ";
         await tenantCmd.ExecuteNonQueryAsync();
-
-        // Run migrations on the new tenant's database;
+        
         var builder = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(tenantConn);
         await using var context = new ApplicationDbContext(builder.Options);
         await context.Database.MigrateAsync();

@@ -1,7 +1,6 @@
 ﻿namespace MultitenancyApp.Services;
 
-using MultitenancyApp.Interfaces;
-using BC = BCrypt.Net.BCrypt;
+using Interfaces;
 
 public class PasswordService : IPasswordService
 {

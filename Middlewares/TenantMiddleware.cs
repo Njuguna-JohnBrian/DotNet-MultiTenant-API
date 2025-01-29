@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using MultitenancyApp.DatabaseContext;
+using MultitenancyApp.Helpers;
 using MultitenancyApp.Interfaces;
 using Npgsql;
 
@@ -16,9 +17,9 @@ public class TenantMiddleware
 
     public async Task InvokeAsync(
         HttpContext httpContext,
-        IdentityDbContext _identityContext,
-        ApplicationDbContext _applicationDbContext,
-        IPasswordService _passwordService)
+        IdentityDbContext identityContext,
+        ApplicationDbContext applicationDbContext,
+        IPasswordService passwordService)
     {
         var apiPath = httpContext.Request.Path.Value?.ToLower();
 
@@ -36,7 +37,7 @@ public class TenantMiddleware
 
         var tenantId = httpContext.Request.Headers["TenantId"].ToString();
 
-        var tenantData = _identityContext.Tenants.FirstOrDefault(tnt => tnt.Id.ToString() == tenantId);
+        var tenantData = identityContext.Tenants.FirstOrDefault(tnt => tnt.Id.ToString() == tenantId);
 
         if (tenantData == null)
         {
@@ -46,17 +47,16 @@ public class TenantMiddleware
 
         var tenantConnectionString = new NpgsqlConnectionStringBuilder
         {
-            Host = "localhost",
-            Port = 5432,
+            Host = ConfigurationHelper.GetConfigurationValueByKey("DbOptions:Host"),
+            Port = int.Parse(ConfigurationHelper.GetConfigurationValueByKey("DbOptions:Port")!),
             Database = tenantData.TenantName,
             Username = tenantData.TenantName,
-            Password = _passwordService.DecryptPassword(tenantData.PasswordHash),
-        };
+            Password = passwordService.DecryptPassword(tenantData.PasswordHash),
+        }.ConnectionString;
+        
 
-        Console.WriteLine(tenantConnectionString.ConnectionString);
-
-        _applicationDbContext.Database.SetConnectionString(tenantConnectionString.ConnectionString);
-        await _applicationDbContext.Database.MigrateAsync();
+        applicationDbContext.Database.SetConnectionString(tenantConnectionString);
+        await applicationDbContext.Database.MigrateAsync();
         await _next.Invoke(httpContext);
     }
 }

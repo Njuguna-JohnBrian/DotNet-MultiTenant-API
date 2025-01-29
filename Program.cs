@@ -1,4 +1,7 @@
 using System.Text;
+using Hangfire;
+using Hangfire.Dashboard;
+using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -20,6 +23,16 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(ConfigurationHelper.GetConfigurationValueByKey("ConnectionStrings:ApplicationConnection")!);
 });
 
+builder.Services.AddHangfire(configuration =>
+    configuration.SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
+        .UseSimpleAssemblyNameTypeSerializer()
+        .UseRecommendedSerializerSettings()
+        .UsePostgreSqlStorage(options =>
+            options.UseNpgsqlConnection(
+                ConfigurationHelper.GetConfigurationValueByKey("ConnectionStrings:HangfireConnection")!))
+);
+
+builder.Services.AddHangfireServer();
 builder.Services.AddControllers();
 builder.Services.AddMemoryCache();
 builder.Services.AddCors();
@@ -31,7 +44,7 @@ builder.Services.AddAutoMapper(typeof(Program));
 builder.Services.AddTransient<DbSeeder>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
-builder.Services.AddScoped<ITenantService,TenantService>();
+builder.Services.AddScoped<ITenantService, TenantService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -50,6 +63,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 var app = builder.Build();
 
 app.UseMiddleware<TenantMiddleware>();
+
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = [new LocalRequestsOnlyAuthorizationFilter()],
+    DisplayStorageConnectionString = false,
+    DashboardTitle = "Hangfire Dashboard",
+    StatsPollingInterval = 500
+});
+
+
+app.UseHangfireServer(new BackgroundJobServerOptions()
+{
+    ServerTimeout = TimeSpan.FromMinutes(10),
+});
+
+app.MapHangfireDashboard();
 
 
 app.UseHttpsRedirection();
